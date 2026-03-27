@@ -1,0 +1,182 @@
+.alc-wrapper {
+    max-width: 860px;
+    margin: 20px auto;
+    padding: 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff
+}
+
+.alc-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px
+}
+
+.alc-grid label {
+    display: flex;
+    flex-direction: column;
+    font-weight: 600
+}
+
+.alc-grid input {
+    margin-top: 6px;
+    padding: 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    min-height: 38px
+}
+
+.alc-cats label {
+    display: block;
+    margin: 10px 0 6px
+}
+
+.alc-panel {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 6px 0 12px;
+    background: #fafafa
+}
+
+.alc-panel-inner h4 {
+    margin: 0 0 8px 0
+}
+
+.alc-panel-inner label {
+    display: block;
+    margin: 8px 0;
+    font-weight: 600
+}
+
+.alc-panel-inner input[type=text],
+.alc-panel-inner input[type=file] {
+    width: 100%;
+    margin-top: 6px;
+    padding: 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px
+}
+
+.alc-verify {
+    display: flex;
+    flex-direction: column;
+    gap: 6px
+}
+
+.alc-verify .alc-verify-note {
+    font-size: 12px;
+    color: #6b7280
+}
+
+.alc-fee {
+    margin: 14px 0;
+    font-size: 16px
+}
+
+.alc-consents {
+    margin: 12px 0
+}
+
+.alc-consent {
+    display: block;
+    margin: 6px 0
+}
+
+.alc-actions {
+    margin-top: 14px
+}
+
+.alc-success {
+    padding: 12px;
+    border: 1px solid #10b981;
+    border-radius: 6px;
+    background: #ecfdf5;
+    color: #065f46
+}
+
+.alc-home-btn {
+    display: inline-block;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #065f46;
+    text-decoration: none
+}
+
+.alc-support {
+    font-size: 13px;
+    color: #6b7280;
+    margin-top: 10px
+}
+
+#alc-paypal-wrap {
+    display: none;
+    margin: 12px auto;
+    /* auto per centrare */
+    max-width: 420px;
+}
+
+.alc-success code {
+    background: #f3f4f6;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.alc-copy-id {
+    margin-left: 8px;
+    padding: 4px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.alc-copy-id:hover {
+    background: #f9fafb;
+}
+
+@media (max-width:640px) {
+    .alc-grid {
+        grid-template-columns: 1fr
+    }
+}
+
+.alc-info.alc-note-important {
+    background-color: #f0f9ff;
+    /* azzurro chiaro */
+    border: 1px solid #bae6fd;
+    /* bordo tenue */
+    border-left: 5px solid #0284c7;
+    /* evidenziazione sinistra */
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin: 14px 0 18px;
+    color: #0c4a6e;
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.alc-info.alc-note-important strong {
+    color: #075985;
+    font-weight: 600;
+}
+
+.alc-info.alc-note-important em {
+    display: inline-block;
+    margin-top: 6px;
+    font-style: italic;
+    color: #b91c1c;
+    /* rosso tenue per evidenziare la parte "non rimborsabile" */
+}
+
+.alc-info.alc-note-important a {
+    color: #0369a1;
+    text-decoration: underline;
+}
+
+.alc-info.alc-note-important a:hover {
+    color: #0ea5e9;
+    text-decoration: none;
+}
