@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALC — Test Frontend Locale</title>
+
+    <!-- Plugin CSS (percorso relativo dalla cartella test/) -->
+    <link rel="stylesheet" href="../alc-plugin/assets/css/style.css">
+
+    <style>
+        /* ── Reset / Layout ────────────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 14px;
+            background: #f3f4f6;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* ── Sidebar Test Panel ─────────────────────────────────────────── */
+        #alc-test-panel {
+            width: 280px;
+            min-width: 280px;
+            background: #1e293b;
+            color: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        .tp-header {
+            background: #0f172a;
+            padding: 14px 16px;
+            border-bottom: 1px solid #334155;
+        }
+        .tp-header h1 {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 700;
+            color: #f8fafc;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+        }
+        .tp-header .tp-version {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+        .tp-section {
+            padding: 12px 16px;
+            border-bottom: 1px solid #334155;
+        }
+        .tp-section h2 {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            margin: 0 0 8px;
+        }
+
+        /* Scenario buttons */
+        .tp-scenarios { display: flex; flex-direction: column; gap: 4px; }
+        .tp-scenario {
+            display: block;
+            padding: 6px 10px;
+            border-radius: 5px;
+            background: #334155;
+            color: #cbd5e1;
+            text-decoration: none;
+            font-size: 12px;
+            transition: background .15s;
+        }
+        .tp-scenario:hover { background: #475569; color: #f1f5f9; }
+        .tp-scenario.active { background: #2271b1; color: #fff; font-weight: 600; }
+        .tp-scenario .sc-tag {
+            display: inline-block;
+            font-size: 9px;
+            background: #1e293b;
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin-left: 4px;
+            vertical-align: middle;
+            opacity: .8;
+        }
+
+        /* Config display */
+        .cfg-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 3px 0;
+            font-size: 12px;
+            border-bottom: 1px solid #1e3a5f20;
+        }
+        .cfg-key { color: #94a3b8; }
+        .cfg-val { color: #e2e8f0; font-weight: 600; }
+
+        /* Quote */
+        .fee-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 3px 0;
+        }
+        .fee-cat { color: #94a3b8; }
+        .fee-val { color: #34d399; font-weight: 700; font-family: monospace; }
+
+        /* Log */
+        #alc-test-log {
+            font-size: 11px;
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+        .tlog-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid #1e293b;
+            line-height: 1.4;
+        }
+        .tlog-time  { color: #475569; margin-right: 4px; }
+        .tlog-arrow { margin-right: 4px; }
+        .tlog-req   .tlog-arrow { color: #fbbf24; }
+        .tlog-ok    .tlog-arrow { color: #34d399; }
+        .tlog-err   .tlog-arrow { color: #f87171; }
+        .tlog-detail { color: #64748b; font-size: 10px; }
+        .tlog-empty { color: #475569; font-style: italic; font-size: 11px; }
+
+        /* Help note */
+        .tp-help {
+            font-size: 11px;
+            color: #64748b;
+            line-height: 1.5;
+            padding: 10px 16px;
+            margin-top: auto;
+            border-top: 1px solid #334155;
+        }
+        .tp-help a { color: #60a5fa; }
+
+        /* ── Main content ───────────────────────────────────────────────── */
+        #alc-main {
+            flex: 1;
+            padding: 32px 24px;
+            overflow-y: auto;
+        }
+        .alc-page-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin: 0 0 8px;
+        }
+        .alc-page-subtitle {
+            font-size: 12px;
+            color: #9ca3af;
+            margin: 0 0 20px;
+        }
+
+        /* ── Mock PayPal button ─────────────────────────────────────────── */
+        .alc-mock-paypal { text-align: center; }
+        .alc-mock-paypal-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            max-width: 360px;
+            padding: 12px 20px;
+            background: #009cde;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .2s, opacity .2s;
+        }
+        .alc-mock-paypal-btn:hover:not(:disabled) { background: #007ab8; }
+        .alc-mock-paypal-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+        /* ── Responsive: su schermi stretti il pannello va sopra ────────── */
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            #alc-test-panel { width: 100%; min-width: 0; height: auto; position: static; }
+            #alc-test-log { max-height: 120px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════ SIDEBAR -->
+<aside id="alc-test-panel">
+
+    <div class="tp-header">
+        <h1>ALC Test Panel</h1>
+        <div class="tp-version">Plugin v2.8.0 — Frontend locale</div>
+    </div>
+
+    <!-- Scenari -->
+    <div class="tp-section">
+        <h2>Scenario</h2>
+        <div class="tp-scenarios" id="alc-scenarios">
+            <a class="tp-scenario" href="?">
+                Default <span class="sc-tag">PayPal + cattura</span>
+            </a>
+            <a class="tp-scenario" href="?paypal=0">
+                Senza PayPal <span class="sc-tag">invio diretto</span>
+            </a>
+            <a class="tp-scenario" href="?capture=0">
+                PayPal opzionale <span class="sc-tag">cattura off</span>
+            </a>
+            <a class="tp-scenario" href="?submit_error=1">
+                Errore invio <span class="sc-tag">alc_submit KO</span>
+            </a>
+            <a class="tp-scenario" href="?paypal_error=1">
+                Errore PayPal <span class="sc-tag">capture KO</span>
+            </a>
+            <a class="tp-scenario" href="?delay=2000">
+                Rete lenta <span class="sc-tag">2 s delay</span>
+            </a>
+            <a class="tp-scenario" href="?paypal=0&submit_error=1">
+                Errore + no PayPal <span class="sc-tag">worst case</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Configurazione attiva -->
+    <div class="tp-section">
+        <h2>Configurazione attiva</h2>
+        <div id="alc-test-config"><span class="tlog-empty">Caricamento…</span></div>
+    </div>
+
+    <!-- Quote -->
+    <div class="tp-section">
+        <h2>Quote iscrizione</h2>
+        <div class="fee-row"><span class="fee-cat">Romanzo inedito</span>  <span class="fee-val">€ 25,00</span></div>
+        <div class="fee-row"><span class="fee-cat">Romanzo edito</span>    <span class="fee-val">€ 25,00</span></div>
+        <div class="fee-row"><span class="fee-cat">Racconto inedito</span> <span class="fee-val">€ 20,00</span></div>
+        <div class="fee-row"><span class="fee-cat">Poesia inedita</span>   <span class="fee-val">€ 15,00</span></div>
+    </div>
+
+    <!-- Log AJAX -->
+    <div class="tp-section" style="flex:1">
+        <h2>Log richieste AJAX</h2>
+        <div id="alc-test-log"><span class="tlog-empty">Nessuna richiesta ancora.</span></div>
+    </div>
+
+    <div class="tp-help">
+        Apri direttamente in browser o servi con<br>
+        <code>python -m http.server 8080</code><br>
+        dalla root del repo.<br><br>
+        Parametri URL combinabili:<br>
+        <code>?paypal=0&delay=1500</code>
+    </div>
+
+</aside>
+
+<!-- ═══════════════════════════════════════════════════════════ MAIN -->
+<main id="alc-main">
+
+    <p class="alc-page-title">Test — Pagina iscrizione pubblica</p>
+    <p class="alc-page-subtitle">
+        Il form qui sotto è identico a quello generato dallo shortcode
+        <code>[alc_submission_form]</code>. Le chiamate AJAX sono intercettate e
+        simulate localmente — nessuna connessione al server.
+    </p>
+
+    <!-- ── Markup 1:1 da render_form() in class-alc-plugin.php ─────────── -->
+    <div class="alc-wrapper">
+        <h3>Iscrizione al Concorso "Agitazioni Letterarie Castelluccesi"</h3>
+        <form id="alc-form" enctype="multipart/form-data">
+
+            <fieldset>
+                <legend>1. Dati anagrafici</legend>
+                <div class="alc-grid">
+                    <label>Nome *<input type="text" name="nome" required></label>
+                    <label>Cognome *<input type="text" name="cognome" required></label>
+                    <label>Email *<input type="email" name="email" required></label>
+                    <label>Telefono <input type="text" name="telefono"></label>
+                    <label>Data di nascita *<input type="date" name="nascita" required></label>
+                    <label>Indirizzo <input type="text" name="indirizzo"></label>
+                    <label>Città <input type="text" name="citta"></label>
+                    <label>CAP <input type="text" name="cap" pattern="\d{4,10}"></label>
+                    <label>Paese <input type="text" name="paese"></label>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>2. Categorie e manoscritti</legend>
+                <p>Seleziona una o più categorie: per ciascuna, si aprirà un pannello dove inserire
+                   il <strong>titolo</strong> e <strong>caricare il manoscritto</strong>
+                   (PDF, DOC, DOCX o TXT).</p>
+                <div class="alc-cats">
+
+                    <label>
+                        <input type="checkbox" name="categorie[]" value="romanzo_inedito">
+                        Romanzo inedito (non incluso in opera provvista di codice ISBN)
+                    </label>
+                    <div class="alc-panel" data-panel="romanzo_inedito" style="display:none"></div>
+
+                    <label>
+                        <input type="checkbox" name="categorie[]" value="romanzo_edito">
+                        Romanzo edito
+                    </label>
+                    <div class="alc-panel" data-panel="romanzo_edito" style="display:none"></div>
+
+                    <label>
+                        <input type="checkbox" name="categorie[]" value="racconto_inedito">
+                        Racconto inedito (non incluso in opera provvista di codice ISBN)
+                    </label>
+                    <div class="alc-panel" data-panel="racconto_inedito" style="display:none"></div>
+
+                    <label>
+                        <input type="checkbox" name="categorie[]" value="poesia_inedita">
+                        Componimento poetico inedito (non incluso in opera provvista di codice ISBN)
+                    </label>
+                    <div class="alc-panel" data-panel="poesia_inedita" style="display:none"></div>
+
+                </div>
+            </fieldset>
+
+            <div class="alc-fee">
+                <strong>Quota totale:</strong>
+                <span id="alc-total">0</span>
+                <span id="alc-currency"></span>
+            </div>
+
+            <div class="alc-consents">
+                <label class="alc-consent">
+                    <input type="checkbox" name="privacy" id="alc-privacy" required>
+                    Ho letto e accetto l'<a href="#privacy" target="_blank" rel="noopener" id="alc-privacy-link">informativa privacy</a>.
+                </label>
+                <label class="alc-consent">
+                    <input type="checkbox" name="regolamento" id="alc-regolamento" required>
+                    Ho letto e accetto il <a href="#regolamento" target="_blank" rel="noopener" id="alc-regolamento-link">regolamento del concorso</a>.
+                </label>
+            </div>
+
+            <div id="alc-paypal-wrap" style="margin:10px 0; display:none;">
+                <div id="paypal-button-container"></div>
+                <div class="alc-note">Dopo il pagamento PayPal il modulo si invierà automaticamente.</div>
+            </div>
+
+            <input type="hidden" name="submission_id"      id="submission_id">
+            <input type="hidden" name="paypal_order_id"    id="paypal_order_id">
+            <input type="hidden" name="paypal_capture_id"  id="paypal_capture_id">
+            <input type="hidden" name="paypal_payer_email" id="paypal_payer_email">
+            <input type="hidden" name="paypal_amount"      id="paypal_amount">
+
+            <div class="alc-actions">
+                <button type="submit" id="alc-submit" disabled>Invia candidatura</button>
+            </div>
+            <p class="alc-support">
+                Problemi con l'iscrizione?
+                <a href="mailto:info@agitazioniletterariecast.com">Contattaci</a>
+            </p>
+        </form>
+        <div id="alc-result"></div>
+    </div>
+    <!-- ── Fine markup form ─────────────────────────────────────────────── -->
+
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════ SCRIPTS -->
+<!--
+    ORDINE OBBLIGATORIO:
+    1. jQuery          (richiesto da form.js)
+    2. mock-server.js  (definisce ALC_VARS, ALC_PAYPAL, window.paypal, mock fetch)
+    3. form.js         (legge i globals definiti sopra)
+-->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"
+        integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
+        crossorigin="anonymous"></script>
+<script src="mock-server.js"></script>
+<script src="../alc-plugin/assets/js/form.js"></script>
+
+<script>
+/* ── Evidenzia lo scenario attivo nella sidebar ─────────────────────────── */
+(function () {
+    var current = window.location.search || '?';
+    document.querySelectorAll('.tp-scenario').forEach(function (a) {
+        var href = a.getAttribute('href');
+        if (href === '?' && (current === '' || current === '?')) {
+            a.classList.add('active');
+        } else if (href !== '?' && current === href) {
+            a.classList.add('active');
+        }
+    });
+})();
+</script>
+
+</body>
+</html>
