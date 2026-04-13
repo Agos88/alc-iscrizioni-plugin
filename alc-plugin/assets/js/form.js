@@ -1,15 +1,11 @@
 jQuery(function($){
   $('#alc-currency').text(ALC_VARS.currency);
-  const PANELS={'romanzo_inedito':'Romanzo inedito','romanzo_edito':'Romanzo edito','racconto_edito':'Racconto inedito','poesia_inedita':'Componimento poetico inedito'};
+  const PANELS={'romanzo_inedito':'Romanzo inedito','romanzo_edito':'Romanzo edito','racconto_inedito':'Racconto inedito','poesia_inedita':'Componimento poetico inedito'};
   function panelMarkup(cat,label){
-    const poetry=(cat==='poesia_inedita');
     return '<div class="alc-panel-inner">'
       +'<h4>'+label+'</h4>'
       +'<label>Titolo del manoscritto *<input type="text" name="titolo_'+cat+'" required></label>'
-      +'<label>Carica manoscritto (.txt, .doc, .docx) *<input type="file" name="manoscritto_'+cat+'" accept=".txt,.doc,.docx" required></label>'
-      +'<div class="alc-verify"><button type="button" class="button alc-verify-btn" data-cat="'+cat+'">Verifica manoscritto</button>'
-      +'<span class="alc-verify-note">Il conteggio considera tutti i caratteri, spazi inclusi.'+(poetry?' Per la poesia si contano anche i versi.':'')+'</span>'
-      +'<div class="alc-verify-out" id="verify_'+cat+'"></div></div>'
+      +'<label>Carica manoscritto (PDF, DOC, DOCX, TXT) *<input type="file" name="manoscritto_'+cat+'" accept=".pdf,.doc,.docx,.txt" required></label>'
       +'</div>';
   }
   function togglePanel(cat, checked){
@@ -41,30 +37,17 @@ jQuery(function($){
     if(!$('#alc-privacy').is(':checked')) ok=false;
     if(!$('#alc-regolamento').is(':checked')) ok=false;
     $('#alc-submit').prop('disabled', !ok);
+    // Mostra il blocco PayPal solo quando il form è completamente valido
+    if (ALC_PAYPAL && ALC_PAYPAL.enabled && ALC_PAYPAL.capture_required) {
+      const paypalMounted = document.getElementById('paypal-button-container')?.dataset.mounted === '1';
+      if (paypalMounted) { if (ok) $('#alc-paypal-wrap').show(); else $('#alc-paypal-wrap').hide(); }
+    }
     return ok;
   }
   $(document).on('change','input[name="categorie[]"]', function(){ togglePanel($(this).val(), this.checked); });
   $(document).on('keyup change','#alc-form input', function(){ validateSubmit(); });
   $('#alc-privacy-link').on('click', function(){ $('#alc-privacy').prop('checked', true); validateSubmit(); });
   $('#alc-regolamento-link').on('click', function(){ $('#alc-regolamento').prop('checked', true); validateSubmit(); });
-  $(document).on('click','.alc-verify-btn', function(){
-    const cat=$(this).data('cat');
-    const fd=new FormData();
-    fd.append('action','alc_verify');
-    fd.append('security',ALC_VARS.nonce);
-    fd.append('categorie[]', cat);
-    const f=$('input[name="manoscritto_'+cat+'"]')[0].files[0];
-    if(!f){ alert('Seleziona un file per '+cat); return; }
-    fd.append('manoscritto_'+cat, f);
-    fetch(ALC_VARS.ajax,{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(res=>{
-      if(!res.ok){ throw new Error((res.errors&&res.errors.join(' '))||'Verifica fallita'); }
-      const d=res.per_category&&res.per_category[cat]?res.per_category[cat]:null;
-      if(!d){ throw new Error('Nessun esito per '+cat); }
-      let msg='Caratteri (spazi inclusi): '+d.char_count;
-      if(cat==='poesia_inedita'){ msg+=' — Versi: '+d.versi; }
-      $('#verify_'+cat).text(msg);
-    }).catch(e=>alert(e.message));
-  });
   $('#alc-form').on('submit', function(e){
     e.preventDefault();
     const fd=new FormData(this);
@@ -76,6 +59,7 @@ jQuery(function($){
 	$('#alc-result').html(
 	  '<div class="alc-success">' +
 		'<strong>Iscrizione effettuata con successo!</strong><br>' +
+		'<p>I tuoi file sono stati caricati e la tua candidatura è stata registrata correttamente.</p>' +
 		'ID: <code id="alc-submission-id">'+res.submission_id+'</code>' +
 		' <button type="button" class="alc-copy-id" aria-label="Copia ID iscrizione" ' +
 		' data-clipboard-text="'+res.submission_id+'">Copia ID</button>' +
@@ -132,7 +116,7 @@ $(document).on('click', '.alc-copy-id', async function(e){
       const el = findContainer();
       if (!el) { console.debug('Container PayPal non ancora nel DOM, ritento...'); return; }
       if (mounted || el.dataset.mounted === '1') { console.debug('PayPal già montato, skip.'); return; }
-      $('#alc-paypal-wrap').show();
+      if (ALC_PAYPAL.capture_required) $('#alc-submit').hide();
       el.dataset.mounted = '1';
       mounted = true;
       console.debug('Mount PayPal buttons...');
@@ -150,7 +134,12 @@ $(document).on('click', '.alc-copy-id', async function(e){
             fd.append('action','alc_paypal_create_order');
             fd.append('security',ALC_VARS.nonce);
             $('input[name="categorie[]"]:checked').each(function(){ fd.append('categorie[]', $(this).val()); });
-            return fetch(ALC_VARS.ajax,{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(res=>{
+            return fetch(ALC_VARS.ajax,{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){
+              return r.text().then(function(txt){
+                if(!txt) throw new Error('[createOrder] Risposta vuota dal server (HTTP '+r.status+'). Verifica i log PHP.');
+                try { return JSON.parse(txt); } catch(e){ throw new Error('[createOrder] Risposta non-JSON (HTTP '+r.status+'): '+txt.substring(0,300)); }
+              });
+            }).then(res=>{
               if(!res.ok){ throw new Error(res.error||'createOrder failed'); }
               $('#submission_id').val(res.provisional_submission_id||'');
               $('#paypal_amount').val(res.amount);
@@ -162,14 +151,18 @@ $(document).on('click', '.alc-copy-id', async function(e){
             fd.append('action','alc_paypal_capture_order');
             fd.append('security',ALC_VARS.nonce);
             fd.append('orderID', data.orderID);
-            return fetch(ALC_VARS.ajax,{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(res=>{
+            return fetch(ALC_VARS.ajax,{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){
+              return r.text().then(function(txt){
+                if(!txt) throw new Error('[capture] Risposta vuota dal server (HTTP '+r.status+'). Verifica i log PHP.');
+                try { return JSON.parse(txt); } catch(e){ throw new Error('[capture] Risposta non-JSON (HTTP '+r.status+'): '+txt.substring(0,300)); }
+              });
+            }).then(res=>{
               if(!res.ok){ throw new Error(res.error||'capture failed'); }
               $('#submission_id').val(res.orderID);
               $('#paypal_order_id').val(res.orderID);
               $('#paypal_capture_id').val(res.captureID||'');
               $('#paypal_payer_email').val(res.payer_email||'');
               $('#paypal_amount').val(res.amount||$('#paypal_amount').val());
-              $('#alc-submit').prop('disabled', false);
               $('#alc-form').trigger('submit');
             }).catch(e=>alert('Pagamento non riuscito: '+e.message));
           },

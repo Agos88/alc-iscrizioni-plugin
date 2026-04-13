@@ -28,8 +28,6 @@ class ALC_Plugin {
         add_shortcode('alc_submission_form',[$this,'render_form']);
         add_action('wp_enqueue_scripts',[$this,'assets']);
 
-        add_action('wp_ajax_alc_verify',[$this,'handle_verify']);
-        add_action('wp_ajax_nopriv_alc_verify',[$this,'handle_verify']);
         add_action('wp_ajax_alc_submit',[$this,'handle_submit']);
         add_action('wp_ajax_nopriv_alc_submit',[$this,'handle_submit']);
         add_action('wp_ajax_alc_export_csv',[$this,'export_csv']);
@@ -120,8 +118,9 @@ class ALC_Plugin {
             'success_url'=>$o['success_redirect_url']??'/'
         ]);
         wp_localize_script('alc-form','ALC_PAYPAL',[
-            'enabled'=>!empty($o['paypal_enabled']),
-            'mode'=>$o['paypal_mode']??'sandbox'
+            'enabled'          => !empty($o['paypal_enabled']),
+            'mode'             => $o['paypal_mode'] ?? 'sandbox',
+            'capture_required' => !empty($o['paypal_capture_required']),
         ]);
         if (!empty($o['paypal_client_id'])){
             $sdk='https://www.paypal.com/sdk/js?client-id='.rawurlencode($o['paypal_client_id']).'&currency='.rawurlencode($o['currency']??'EUR').'&intent=capture&components=buttons';
@@ -151,13 +150,7 @@ class ALC_Plugin {
                 </div></fieldset>
 
                 <fieldset><legend>2. Categorie e manoscritti</legend>
-                    <p>Seleziona una o più categorie: per ciascuna, si aprirà un pannello dove inserire il <strong>titolo</strong> e <strong>caricare il manoscritto</strong>. Puoi anche verificare il conteggio dei caratteri (spazi inclusi).</p>
-					<div class="alc-info alc-note-important">
-					  <strong>Nota importante:</strong> la funzione “Verifica manoscritto” serve solo per un controllo indicativo.
-					  <br>Ricorda che i <strong>limiti di caratteri previsti dal bando devono essere sempre rispettati</strong>.
-					  <br>L’organizzazione effettuerà una verifica ufficiale dopo l’invio dell’iscrizione.
-					  <br><em>La quota di iscrizione non verrà rimborsata nel caso in cui non siano rispettati i requisiti indicati dal bando.</em>
-					</div>
+                    <p>Seleziona una o più categorie: per ciascuna, si aprirà un pannello dove inserire il <strong>titolo</strong> e <strong>caricare il manoscritto</strong> (PDF, DOC, DOCX o TXT).</p>
                     <div class="alc-cats">
                         <label><input type="checkbox" name="categorie[]" value="romanzo_inedito"> Romanzo inedito (non incluso in opera provvista di codice ISBN)</label>
                         <div class="alc-panel" data-panel="romanzo_inedito" style="display:none"></div>
@@ -219,63 +212,35 @@ class ALC_Plugin {
         echo '</table></div>';
     }
 
-    private function zip_available(){ return class_exists('ZipArchive'); }
-    private function safe_strlen($s){ return function_exists('mb_strlen')?mb_strlen($s,'UTF-8'):strlen($s); }
-
-    private function count_chars_with_spaces($path,$ext){
-        $ext=strtolower($ext);
-        if($ext==='txt'){ $t=@file_get_contents($path); return $this->safe_strlen($t?:''); }
-        if($ext==='docx'){ if(!$this->zip_available()) return 0; $z=new ZipArchive(); if($z->open($path)===true){ $i=$z->locateName('word/document.xml'); if($i!==false){ $xml=$z->getFromIndex($i); $text=wp_strip_all_tags($xml); $z->close(); return $this->safe_strlen($text);} $z->close(); } return 0; }
-        if($ext==='doc'){ $b=@file_get_contents($path)?:''; $text=preg_replace('/[\x00-\x1F]+/',' ',$b); return $this->safe_strlen(trim($text)); }
-        return 0;
-    }
-    private function count_poetry_lines($path,$ext){
-        $ext=strtolower($ext); $text='';
-        if($ext==='txt'){ $text=@file_get_contents($path)?:''; }
-        elseif($ext==='docx'){ if(!$this->zip_available()) return 0; $z=new ZipArchive(); if($z->open($path)===true){ $i=$z->locateName('word/document.xml'); if($i!==false){ $xml=$z->getFromIndex($i); $xml=preg_replace('/<\/w:p>/',"\n",$xml); $text=wp_strip_all_tags($xml);} $z->close(); } }
-        else { $b=@file_get_contents($path)?:''; $text=preg_replace('/[\x00-\x1F]+/',"\n",$b); }
-        $lines=array_filter(array_map('trim', preg_split("/\r?\n/", $text)));
-        return count($lines);
-    }
-
-    private function process_uploaded_file_temp($file){
-        require_once ABSPATH.'wp-admin/includes/file.php';
-        $overrides=['test_form'=>false,'mimes'=>['txt'=>'text/plain','doc'=>'application/msword','docx'=>'application/vnd.openxmlformats-officedocument.wordprocessingml.document']];
-        $move=wp_handle_upload($file,$overrides);
-        if(!empty($move['error'])) return [false,$move['error'],null];
-        return [true,'OK',$move];
-    }
 
     private function alc_storage_dir($submission_id){
         $u = wp_upload_dir();
-        $base = trailingslashit($u['basedir']).'alc-iscrizioni/'.sanitize_file_name($submission_id).'/';
+        $root = trailingslashit($u['basedir']).'alc-iscrizioni/';
+        if (!file_exists($root)) wp_mkdir_p($root);
+        // Blocca l'accesso diretto via web su server Apache/compatibili
+        if (!file_exists($root.'.htaccess'))
+            file_put_contents($root.'.htaccess', "Options -Indexes\nDeny from all\n");
+        if (!file_exists($root.'index.php'))
+            file_put_contents($root.'index.php', '<?php // Silence is golden.');
+        $base = $root.sanitize_file_name($submission_id).'/';
         if (!file_exists($base)) wp_mkdir_p($base);
         $url = trailingslashit($u['baseurl']).'alc-iscrizioni/'.rawurlencode(sanitize_file_name($submission_id)).'/';
         return [$base,$url];
     }
 
-    public function handle_verify(){
-        check_ajax_referer('alc_nonce','security');
-        $resp=['ok'=>false,'errors'=>[],'per_category'=>[]];
-        $allowed=['romanzo_inedito','romanzo_edito','racconto_inedito','poesia_inedita'];
-        $cats = isset($_POST['categorie']) && is_array($_POST['categorie']) ? array_values(array_intersect(array_map('sanitize_text_field', $_POST['categorie']), $allowed)) : [];
-        if(!$cats){ $resp['errors'][]='Seleziona almeno una categoria valida.'; wp_send_json($resp,400); }
-        $processed = 0;
-        foreach($cats as $cat){
-            $key='manoscritto_'.$cat;
-            if(empty($_FILES[$key]) || $_FILES[$key]['error']!==UPLOAD_ERR_OK){ continue; }
-            list($ok,$msg,$move)=$this->process_uploaded_file_temp($_FILES[$key]);
-            if(!$ok){ $resp['errors'][]=$msg; continue; }
-            $processed++;
-            $path=$move['file']; $ext=strtolower(pathinfo($path,PATHINFO_EXTENSION));
-            $chars=$this->count_chars_with_spaces($path,$ext);
-            $versi=($cat==='poesia_inedita')?$this->count_poetry_lines($path,$ext):0;
-            $resp['per_category'][$cat]=['char_count'=>$chars,'versi'=>$versi];
-            if($path && file_exists($path)) @unlink($path);
+    private function validate_upload_mime($tmp_path, $ext){
+        $handle = @fopen($tmp_path,'rb'); if(!$handle) return false;
+        $header = fread($handle,8); fclose($handle);
+        if($header===false||strlen($header)<4) return false;
+        switch($ext){
+            case 'pdf':  return strncmp($header,'%PDF-',5)===0;
+            case 'doc':  return substr($header,0,4)==="\xD0\xCF\x11\xE0";
+            case 'docx': return substr($header,0,4)==="PK\x03\x04";
+            case 'txt':
+                $content=@file_get_contents($tmp_path,false,null,0,256);
+                return $content!==false && !preg_match('/<\?(?:php|=)/i',$content);
+            default: return false;
         }
-        if($processed===0){ $resp['errors'][]='Nessun file fornito per la verifica.'; wp_send_json($resp,400); }
-        if($resp['errors']) wp_send_json($resp,400);
-        $resp['ok']=true; wp_send_json($resp);
     }
 
     public function handle_submit(){
@@ -293,8 +258,28 @@ class ALC_Plugin {
 
         $o=get_option(self::OPT);
         if(!empty($o['paypal_enabled']) && !empty($o['paypal_capture_required'])){
-            $paid=!empty($_POST['paypal_order_id']) && (!empty($_POST['paypal_capture_id']) || !empty($_POST['paypal_payer_email']));
-            if(!$paid){ $resp['errors'][]='Completa il pagamento PayPal prima di inviare.'; wp_send_json($resp,400); }
+            $order_id=sanitize_text_field($_POST['paypal_order_id']??'');
+            if(!$order_id){ $resp['errors'][]='Completa il pagamento PayPal prima di inviare.'; wp_send_json($resp,400); }
+            // Verifica server-side con l'API PayPal che l'ordine sia realmente COMPLETED
+            $api_base=$this->paypal_api_base();
+            $tok=wp_remote_post("$api_base/v1/oauth2/token",[
+                'headers'=>['Authorization'=>$this->paypal_auth_header()],
+                'body'=>['grant_type'=>'client_credentials'],'timeout'=>30
+            ]);
+            $t=!is_wp_error($tok)?json_decode(wp_remote_retrieve_body($tok),true):[];
+            if(empty($t['access_token'])){ $resp['errors'][]='Verifica pagamento non riuscita.'; wp_send_json($resp,400); }
+            $chk=wp_remote_get($api_base.'/v2/checkout/orders/'.rawurlencode($order_id),[
+                'headers'=>['Authorization'=>'Bearer '.$t['access_token']],'timeout'=>30
+            ]);
+            $order_data=!is_wp_error($chk)?json_decode(wp_remote_retrieve_body($chk),true):[];
+            if(($order_data['status']??'')!=='COMPLETED'){ $resp['errors'][]='Pagamento PayPal non verificato o non completato.'; wp_send_json($resp,400); }
+            // Verifica che l'importo corrisponda al totale atteso calcolato server-side
+            $fees_chk=$o['fees']??[]; $expected=0.0;
+            foreach($cats as $c){ $expected+=isset($fees_chk[$c])?floatval($fees_chk[$c]):0.0; }
+            $paid_amount=$order_data['purchase_units'][0]['payments']['captures'][0]['amount']['value']??null;
+            if($paid_amount!==null && $paid_amount!==number_format($expected,2,'.','')){
+                $resp['errors'][]='Importo pagato non corrispondente al totale atteso.'; wp_send_json($resp,400);
+            }
         }
 
         $submission_id = sanitize_text_field($_POST['submission_id'] ?? '');
@@ -309,8 +294,8 @@ class ALC_Plugin {
         $post_id=wp_insert_post(['post_type'=>self::CPT,'post_status'=>'publish','post_title'=>$submission_id.' — '.$cognome.' '.$nome,'post_content'=>'Iscrizione generata dal modulo ALC.']);
         if(is_wp_error($post_id)||!$post_id){ $resp['errors'][]='Errore nel salvataggio.'; wp_send_json($resp,500); }
 
-        require_once ABSPATH.'wp-admin/includes/file.php';
-        $results=[]; $max_mb=isset($o['max_file_mb'])?max(1,intval($o['max_file_mb'])):10; $max_bytes=$max_mb*1024*1024; $allowed_ext=['txt','doc','docx'];
+        $results=[]; $max_mb=isset($o['max_file_mb'])?max(1,intval($o['max_file_mb'])):10; $max_bytes=$max_mb*1024*1024;
+        $allowed_ext=['pdf','doc','docx','txt'];
         list($dir,$urlbase) = $this->alc_storage_dir($submission_id);
 
         foreach($cats as $cat){
@@ -318,51 +303,41 @@ class ALC_Plugin {
             if(empty($_POST[$tkey])){ $resp['errors'][]='Titolo mancante per '.$cat; continue; }
             if(empty($_FILES[$fkey])||$_FILES[$fkey]['error']!==UPLOAD_ERR_OK){ $resp['errors'][]='File non caricato per '.$cat; continue; }
 
-            $fname=sanitize_file_name($_FILES[$fkey]['name']); 
-			$ext=strtolower(pathinfo($fname,PATHINFO_EXTENSION)); 
-			$size=intval($_FILES[$fkey]['size']);
-            if(!in_array($ext,$allowed_ext,true)){ $resp['errors'][]='Estensione non ammessa per '.$cat; continue; }
+            $fname=sanitize_file_name($_FILES[$fkey]['name']);
+            $ext=strtolower(pathinfo($fname,PATHINFO_EXTENSION));
+            $size=intval($_FILES[$fkey]['size']);
+            if(!in_array($ext,$allowed_ext,true)){ $resp['errors'][]='Estensione non ammessa per '.$cat.' (consentiti: PDF, DOC, DOCX, TXT)'; continue; }
+            if(!$this->validate_upload_mime($_FILES[$fkey]['tmp_name'],$ext)){ $resp['errors'][]='Tipo di file non valido per '.$cat.'.'; continue; }
             if($size<=0 || $size>$max_bytes){ $resp['errors'][]='Il file per '.$cat.' supera '.$max_mb.'MB'; continue; }
 
-            $overrides=['test_form'=>false,'mimes'=>['txt'=>'text/plain','doc'=>'application/msword','docx'=>'application/vnd.openxmlformats-officedocument.wordprocessingml.document']];
-            $m = wp_handle_upload($_FILES[$fkey], $overrides);
-            if (!empty($m['error'])){ $resp['errors'][] = $m['error']; continue; }
-            $src_path = $m['file'];
-			
-			// Costruisci nome file: submission_id_categoria_nome_cognome.ext
+            // Costruisci nome file: submission_id_categoria_nome_cognome.ext
             $safe_nome = sanitize_title($nome);
-			$safe_cognome = sanitize_title($cognome);
-			$new_name = sprintf('%s_%s_%s_%s.%s', $submission_id, $cat, $safe_nome, $safe_cognome, $ext);
-			
-			// Evita collisioni: se esiste già, aggiungi -1, -2, ...
+            $safe_cognome = sanitize_title($cognome);
+            $new_name = sprintf('%s_%s_%s_%s.%s', $submission_id, $cat, $safe_nome, $safe_cognome, $ext);
+
+            // Evita collisioni: se esiste già, aggiungi -1, -2, ...
             $dest_path = trailingslashit($dir).$new_name;
-			if (file_exists($dest_path)) {
-    			$i = 1;
-    			do {
-        			$new_name_try = sprintf('%s_%s_%s_%s-%d.%s', $submission_id, $cat, $safe_nome, $safe_cognome, $i, $ext);
-        			$dest_path = trailingslashit($dir) . $new_name_try;
-        			$i++;
-    			} while (file_exists($dest_path));
-    			$new_name = basename($dest_path);
-			}
-			
-			// Sposta il file fisico nella cartella definitiva
-            if (!@rename($src_path, $dest_path)){
-                @copy($src_path, $dest_path);
-                @unlink($src_path);
+            if (file_exists($dest_path)) {
+                $i = 1;
+                do {
+                    $new_name_try = sprintf('%s_%s_%s_%s-%d.%s', $submission_id, $cat, $safe_nome, $safe_cognome, $i, $ext);
+                    $dest_path = trailingslashit($dir) . $new_name_try;
+                    $i++;
+                } while (file_exists($dest_path));
+                $new_name = basename($dest_path);
+            }
+
+            // Sposta direttamente dal tmp PHP alla cartella definitiva, senza passare per wp_handle_upload
+            // (evita problemi di rilevamento MIME per docx/doc che PHP identifica come application/zip)
+            if (!move_uploaded_file($_FILES[$fkey]['tmp_name'], $dest_path)){
+                $resp['errors'][]='Impossibile salvare il file per '.$cat; continue;
             }
             $file_url = $urlbase . rawurlencode($new_name);
-			
-			// Conteggi
-            $chars=$this->count_chars_with_spaces($dest_path,$ext);
-            $versi=($cat==='poesia_inedita')?$this->count_poetry_lines($dest_path,$ext):0;
 
             $results[$cat]=[
                 'titolo'=>sanitize_text_field($_POST[$tkey]),
                 'file_path'=>$dest_path,
                 'file_url'=>$file_url,
-                'char_count'=>$chars,
-                'versi'=>$versi,
                 'file_size'=> (file_exists($dest_path)?filesize($dest_path):0)
             ];
         }
@@ -400,10 +375,8 @@ class ALC_Plugin {
             if(is_array($per)){
                 foreach($per as $cat=>$d){
                     $titolo = isset($d['titolo']) ? $d['titolo'] : '';
-                    $chars  = isset($d['char_count']) ? $d['char_count'] : 0;
-                    $versi  = ($cat==='poesia_inedita') ? (' | Versi: '.(isset($d['versi'])?$d['versi']:0)) : '';
                     $bytes  = isset($d['file_size']) ? $d['file_size'] : 0;
-                    $details[] = $cat.' | Titolo: '.$titolo.' | Caratteri: '.$chars.$versi.' | Bytes: '.$bytes;
+                    $details[] = $cat.' | Titolo: '.$titolo.' | Bytes: '.$bytes;
                 }
             }
             fputcsv($out,[
